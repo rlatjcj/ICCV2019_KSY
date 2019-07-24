@@ -1,0 +1,9 @@
+.ipynb_checkpoints/
+analyze/detection/
+analyze/for_retina/
+analyze/frequency/*.png
+metadata/
+test/
+train/
+validation/
+vir_*/
