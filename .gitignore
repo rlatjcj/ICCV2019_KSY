@@ -7,3 +7,5 @@ test/
 train/
 validation/
 vir_*/
+
+*.tmp
