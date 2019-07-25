@@ -21,15 +21,6 @@ def get_metadata(url, base_path='./'):
     return full_filename, 0
 
 if __name__=='__main__':
-    target_url = 'https://storage.googleapis.com/openimages/web/download.html'
-    page = requests.get(target_url).text
-    
-    soup = BeautifulSoup(page, 'lxml')
-    main = soup.select_one('div.main')
-    rows = main.select('div.row')
-    rows = [row for row in rows 
-                if row.select_one('div.col-10') and row.select_one('div.col-2.titlecol')]
-
     base_path = pth.join('metadata', 'Segmentations')
     os.makedirs(base_path, exist_ok=True)
     base_url = 'https://storage.googleapis.com/openimages/v5/{}-masks/{}-masks-{}.zip'
