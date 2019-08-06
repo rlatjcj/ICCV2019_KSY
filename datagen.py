@@ -9,6 +9,7 @@ from __future__ import print_function
 import os
 import sys
 import random
+import pandas as pd
 
 import torch
 import torch.utils.data as data
@@ -21,18 +22,20 @@ from transform import resize, random_flip, random_crop, center_crop
 
 class ListDataset(data.Dataset):
     def __init__(self, 
+                 root,
                  list_file, 
                  train, 
                  transform, 
                  input_size):
         '''
         Args:
-          root: (str) ditectory to images.
-          list_file: (str) path to index file.
-          train: (boolean) train or test.
-          transform: ([transforms]) image transforms.
-          input_size: (int) model input size.
+            root: (str) ditectory to images.
+            list_file: (str) path to index file.
+            train: (boolean) train or test.
+            transform: ([transforms]) image transforms.
+            input_size: (int) model input size.
         '''
+        self.root = root
         self.train = train
         self.transform = transform
         self.input_size = input_size
@@ -43,6 +46,7 @@ class ListDataset(data.Dataset):
 
         self.encoder = DataEncoder()
 
+        df = pd.read_csv(list_file, header=None)
         with open(list_file) as f:
             lines = f.readlines()
             self.num_samples = len(lines)

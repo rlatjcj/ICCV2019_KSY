@@ -18,6 +18,12 @@ from datagen import ListDataset
 
 from torch.autograd import Variable
 
+def create_generator():
+    pass
+
+def create_model():
+    pass
+
 # Training
 def train(epoch):
     print('\nEpoch: %d' % epoch)
@@ -76,19 +82,45 @@ def get_arguments():
                         metavar="<command>",
                         help="'train' or 'test'")
                         
-    parser.add_argument('--annotations', 
+    parser.add_argument('--group', type=str,
+                        required=True,
+                        choices=['all', 'main', 'sub'],
+                        help='Group used in training.')
+    parser.add_argument('--trainset', 
+                        required=True,
                         help='Path to CSV file containing annotations for training.')
-    parser.add_argument('--val-annotations', 
+    parser.add_argument('--valset', 
+                        required=False,
                         help='Path to CSV file containing annotations for validation (optional).')
 
-    parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
+    parser.add_argument('--backbone', type=str, 
+                        required=True,
+                        choices=['res50', 'res101', 'seres50', 'seres101'],
+                        help='Backbone for retinanet.')
+    parser.add_argument('--lr', default=.0001, type=float, 
+                        help='Learning rate for training')
+    parser.add_argument('--optimizer', default='adam', type=str,
+                        help='Optimizer for training')
+    parser.add_argument('--epochs', default=50, type=int,
+                        help='Epochs for training')
+
+    parser.add_argument('--checkpoint', default=None, type=str,
+                        help='Enter the checkpoint path if resuming training.')
+
     return parser.parse_args()
 
 
 def main():
     args = get_arguments()
-    assert args.command in ["train", "test"]
+    assert args.command in ["train", "test"], 'Command must be choosen between \'train\' and \'test\'.'
     assert torch.cuda.is_available(), 'Error: CUDA not found!'
+
+    ##############################################
+    # Set Hyper Parameters
+    ##############################################
+    CLASSES = {'all': 600,
+               'main': 70,
+               'sub': 400} # will change
 
     best_loss = float('inf')  # best test loss
     start_epoch = 0  # start from epoch 0 or last epoch
@@ -101,7 +133,7 @@ def main():
     ])
 
     trainset = ListDataset(root=args.root,
-                           list_file='./data/voc12_train.txt', 
+                           list_file=args.trainset, 
                            train=True, 
                            transform=transform, 
                            input_size=600)
@@ -113,7 +145,7 @@ def main():
                                               collate_fn=trainset.collate_fn)
 
     valset = ListDataset(root=args.root,
-                         list_file='./data/voc12_val.txt', 
+                         list_file=args.valset, 
                          train=False, 
                          transform=transform, 
                          input_size=600)
@@ -125,11 +157,13 @@ def main():
                                              collate_fn=valset.collate_fn)
 
     # Model
-    net = RetinaNet()
+    net = RetinaNet(backbone=args.backbone,
+                    classes=CLASSES[args.group])
+
     net.load_state_dict(torch.load('./model/net.pth'))
-    if args.resume:
+    if args.checkpoint:
         print('==> Resuming from checkpoint..')
-        checkpoint = torch.load('./checkpoint/ckpt.pth')
+        checkpoint = torch.load(args.checkpoint)
         net.load_state_dict(checkpoint['net'])
         best_loss = checkpoint['loss']
         start_epoch = checkpoint['epoch']
@@ -140,7 +174,7 @@ def main():
     criterion = FocalLoss()
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
 
-    for epoch in range(start_epoch, start_epoch+200):
+    for epoch in range(start_epoch, args.epochs):
         train(epoch)
         test(epoch)
 

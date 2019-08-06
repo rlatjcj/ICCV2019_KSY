@@ -1,19 +1,26 @@
 import torch
 import torch.nn as nn
 
-from fpn import FPN50
+from fpn import *
 from torch.autograd import Variable
 
 
 class RetinaNet(nn.Module):
     num_anchors = 9
+    model_dict = {'res50': FPN(Bottleneck, [3,4,6,3]),
+                  'res101': FPN(Bottleneck, [3,4,23,3]),
+                  'seres50': FPN(Bottleneck, [3,4,6,3], is_seblock=True),
+                  'seres101': FPN(Bottleneck, [3,4,23,3], is_seblock=True)}
     
-    def __init__(self, num_classes=20):
+    def __init__(self, 
+                 backbone,
+                 classes=20):
+                 
         super(RetinaNet, self).__init__()
-        self.fpn = FPN50()
-        self.num_classes = num_classes
+        self.fpn = self.model_dict[backbone]
+        self.classes = classes
         self.loc_head = self._make_head(self.num_anchors*4)
-        self.cls_head = self._make_head(self.num_anchors*self.num_classes)
+        self.cls_head = self._make_head(self.num_anchors*self.classes)
 
     def forward(self, x):
         fms = self.fpn(x)
@@ -23,7 +30,7 @@ class RetinaNet(nn.Module):
             loc_pred = self.loc_head(fm)
             cls_pred = self.cls_head(fm)
             loc_pred = loc_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,4)                 # [N, 9*4,H,W] -> [N,H,W, 9*4] -> [N,H*W*9, 4]
-            cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.num_classes)  # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
+            cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.classes)  # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
             loc_preds.append(loc_pred)
             cls_preds.append(cls_pred)
         return torch.cat(loc_preds,1), torch.cat(cls_preds,1)
