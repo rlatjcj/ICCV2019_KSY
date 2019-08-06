@@ -20,7 +20,11 @@ from transform import resize, random_flip, random_crop, center_crop
 
 
 class ListDataset(data.Dataset):
-    def __init__(self, root, list_file, train, transform, input_size):
+    def __init__(self, 
+                 list_file, 
+                 train, 
+                 transform, 
+                 input_size):
         '''
         Args:
           root: (str) ditectory to images.
@@ -29,7 +33,6 @@ class ListDataset(data.Dataset):
           transform: ([transforms]) image transforms.
           input_size: (int) model input size.
         '''
-        self.root = root
         self.train = train
         self.transform = transform
         self.input_size = input_size
