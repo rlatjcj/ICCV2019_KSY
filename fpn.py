@@ -137,11 +137,8 @@ def FPN101():
     return FPN(Bottleneck, [3,4,23,3])
 
 
-def test():
+if __name__ == "__main__":
     net = FPN(Bottleneck, [3,4,6,3], is_seblock=True)
     fms = net(Variable(torch.randn(1,3,512,512)))
     for fm in fms:
         print(fm.size())
-
-if __name__ == "__main__":
-    test()

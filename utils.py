@@ -99,18 +99,21 @@ def change_box_order(boxes, order):
     '''Change box order between (xmin,ymin,xmax,ymax) and (xcenter,ycenter,width,height).
 
     Args:
-      boxes: (tensor) bounding boxes, sized [N,4].
-      order: (str) either 'xyxy2xywh' or 'xywh2xyxy'.
+        boxes: (tensor) bounding boxes, sized [N,4].
+        order: (str) either 'xyxy2xywh' or 'xywh2xyxy'.
 
     Returns:
-      (tensor) converted bounding boxes, sized [N,4].
+        (tensor) converted bounding boxes, sized [N,4].
     '''
     assert order in ['xyxy2xywh','xywh2xyxy']
     a = boxes[:,:2]
     b = boxes[:,2:]
     if order == 'xyxy2xywh':
+        # (x1, y1, x2, y2) -> (x_center, y_center, width, height)
         return torch.cat([(a+b)/2,b-a+1], 1)
-    return torch.cat([a-b/2,a+b/2], 1)
+    else:
+        # (x_center, y_center, width, height) -> (x1, y1, x2, y2)
+        return torch.cat([a-b/2,a+b/2], 1)
 
 def box_iou(box1, box2, order='xyxy'):
     '''Compute the intersection over union of two set of boxes.
@@ -118,12 +121,12 @@ def box_iou(box1, box2, order='xyxy'):
     The default box order is (xmin, ymin, xmax, ymax).
 
     Args:
-      box1: (tensor) bounding boxes, sized [N,4].
-      box2: (tensor) bounding boxes, sized [M,4].
-      order: (str) box order, either 'xyxy' or 'xywh'.
+        box1: (tensor) bounding boxes, sized [N,4]. (anchor_boxes)
+        box2: (tensor) bounding boxes, sized [M,4]. (boxes)
+        order: (str) box order, either 'xyxy' or 'xywh'.
 
     Return:
-      (tensor) iou, sized [N,M].
+        (tensor) iou, sized [N,M].
 
     Reference:
       https://github.com/chainer/chainercv/blob/master/chainercv/utils/bbox/bbox_iou.py
@@ -138,8 +141,8 @@ def box_iou(box1, box2, order='xyxy'):
     lt = torch.max(box1[:,None,:2], box2[:,:2])  # [N,M,2]
     rb = torch.min(box1[:,None,2:], box2[:,2:])  # [N,M,2]
 
-    wh = (rb-lt+1).clamp(min=0)      # [N,M,2]
-    inter = wh[:,:,0] * wh[:,:,1]  # [N,M]
+    wh = (rb-lt+1).clamp(min=0)     # [N,M,2]
+    inter = wh[:,:,0] * wh[:,:,1]   # [N,M]
 
     area1 = (box1[:,2]-box1[:,0]+1) * (box1[:,3]-box1[:,1]+1)  # [N,]
     area2 = (box2[:,2]-box2[:,0]+1) * (box2[:,3]-box2[:,1]+1)  # [M,]

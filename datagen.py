@@ -8,7 +8,10 @@ from __future__ import print_function
 
 import os
 import sys
+import json
+import tqdm
 import random
+import numpy as np
 import pandas as pd
 
 import torch
@@ -23,6 +26,7 @@ from transform import resize, random_flip, random_crop, center_crop
 class ListDataset(data.Dataset):
     def __init__(self, 
                  root,
+                 group,
                  list_file, 
                  train, 
                  transform, 
@@ -36,6 +40,7 @@ class ListDataset(data.Dataset):
             input_size: (int) model input size.
         '''
         self.root = root
+        self.group = group
         self.train = train
         self.transform = transform
         self.input_size = input_size
@@ -46,27 +51,10 @@ class ListDataset(data.Dataset):
 
         self.encoder = DataEncoder()
 
-        df = pd.read_csv(list_file, header=None)
-        with open(list_file) as f:
-            lines = f.readlines()
-            self.num_samples = len(lines)
-
-        for line in lines:
-            splited = line.strip().split()
-            self.fnames.append(splited[0])
-            num_boxes = (len(splited) - 1) // 5
-            box = []
-            label = []
-            for i in range(num_boxes):
-                xmin = splited[1+5*i]
-                ymin = splited[2+5*i]
-                xmax = splited[3+5*i]
-                ymax = splited[4+5*i]
-                c = splited[5+5*i]
-                box.append([float(xmin),float(ymin),float(xmax),float(ymax)])
-                label.append(int(c))
-            self.boxes.append(torch.Tensor(box))
-            self.labels.append(torch.LongTensor(label))
+        self.classid = open("./data/classid_{}.json".format(group), "r").read()
+        self.classid = json.loads(self.classid)
+        self.df = pd.read_csv(list_file, header=None)
+        self.fnames = np.unique(self.df[0].values).tolist()            
 
     def __getitem__(self, idx):
         '''Load image.
@@ -81,12 +69,17 @@ class ListDataset(data.Dataset):
         '''
         # Load image and boxes.
         fname = self.fnames[idx]
-        img = Image.open(os.path.join(self.root, fname))
+        try:
+            img = Image.open(os.path.join(self.root, fname))
+        except:
+            img = Image.open(os.path.join(self.root, fname.replace(fname.split('/')[0], 'train')))
+        
         if img.mode != 'RGB':
             img = img.convert('RGB')
 
-        boxes = self.boxes[idx].clone()
-        labels = self.labels[idx]
+        boxlist = self.df[self.df[0] == fname]
+        boxes = torch.Tensor([[float(boxlist.iloc[i,1]), float(boxlist.iloc[i,2]), float(boxlist.iloc[i,3]), float(boxlist.iloc[i,4])] for i in range(len(boxlist))])
+        labels = torch.LongTensor([int(self.classid[boxlist.iloc[i,5]]) for i in range(len(boxlist))])
         size = self.input_size
 
         # Data augmentation.
@@ -130,26 +123,30 @@ class ListDataset(data.Dataset):
         return inputs, torch.stack(loc_targets), torch.stack(cls_targets)
 
     def __len__(self):
-        return self.num_samples
+        return len(self.fnames)
 
 
-def test():
+if __name__ == "__main__":
     import torchvision
 
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.485,0.456,0.406), (0.229,0.224,0.225))
     ])
-    dataset = ListDataset(root='/mnt/hgfs/D/download/PASCAL_VOC/voc_all_images',
-                          list_file='./data/voc12_train.txt', train=True, transform=transform, input_size=600)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=False, num_workers=1, collate_fn=dataset.collate_fn)
+    dataset = ListDataset(root='/data/public/rw/kiminhwan/jshp',
+                          group='all',
+                          list_file='./data/validation_for_retina.csv', 
+                          train=True, 
+                          transform=transform, 
+                          input_size=600)
 
-    for images, loc_targets, cls_targets in dataloader:
-        print(images.size())
-        print(loc_targets.size())
-        print(cls_targets.size())
-        grid = torchvision.utils.make_grid(images, 1)
-        torchvision.utils.save_image(grid, 'a.jpg')
-        break
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=False, num_workers=4, collate_fn=dataset.collate_fn)
 
-# test()
+    for i, (images, loc_targets, cls_targets) in enumerate(dataloader):
+        # print(images.size())
+        # print(loc_targets.size())
+        # print(cls_targets.size())
+        # print('loc_targets :', loc_targets)
+        print(i, 'cls_targets :', cls_targets.unique())
+        # grid = torchvision.utils.make_grid(images, 1)
+        # torchvision.utils.save_image(grid, './test.jpg')

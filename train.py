@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+import sys
 import argparse
 
 import torch
@@ -24,56 +25,16 @@ def create_generator():
 def create_model():
     pass
 
-# Training
-def train(epoch):
-    print('\nEpoch: %d' % epoch)
-    net.train()
-    net.module.freeze_bn()
-    train_loss = 0
-    for batch_idx, (inputs, loc_targets, cls_targets) in enumerate(trainloader):
-        inputs = Variable(inputs.cuda())
-        loc_targets = Variable(loc_targets.cuda())
-        cls_targets = Variable(cls_targets.cuda())
 
-        optimizer.zero_grad()
-        loc_preds, cls_preds = net(inputs)
-        loss = criterion(loc_preds, loc_targets, cls_preds, cls_targets)
-        loss.backward()
-        optimizer.step()
-
-        train_loss += loss.data[0]
-        print('train_loss: %.3f | avg_loss: %.3f' % (loss.data[0], train_loss/(batch_idx+1)))
-
-
-# Test
-def test(epoch):
-    print('\nTest')
-    net.eval()
-    test_loss = 0
-    for batch_idx, (inputs, loc_targets, cls_targets) in enumerate(testloader):
-        inputs = Variable(inputs.cuda(), volatile=True)
-        loc_targets = Variable(loc_targets.cuda())
-        cls_targets = Variable(cls_targets.cuda())
-
-        loc_preds, cls_preds = net(inputs)
-        loss = criterion(loc_preds, loc_targets, cls_preds, cls_targets)
-        test_loss += loss.data[0]
-        print('test_loss: %.3f | avg_loss: %.3f' % (loss.data[0], test_loss/(batch_idx+1)))
-
-    # Save checkpoint
-    global best_loss
-    test_loss /= len(testloader)
-    if test_loss < best_loss:
-        print('Saving..')
-        state = {
-            'net': net.module.state_dict(),
-            'loss': test_loss,
-            'epoch': epoch,
-        }
-        if not os.path.isdir('checkpoint'):
-            os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/ckpt.pth')
-        best_loss = test_loss
+def printProgress(iteration, total, prefix='', suffix='', decimals=1, barLength=100): 
+    formatStr = "{0:." + str(decimals) + "f}" 
+    percent = formatStr.format(100 * (iteration / float(total))) 
+    filledLength = int(round(barLength * iteration / float(total))) 
+    bar = '#' * filledLength + '-' * (barLength - filledLength) 
+    sys.stdout.write('\r%s |%s| %s%s %s' % (prefix, bar, percent, '%', suffix)), 
+    if iteration == total: 
+        sys.stdout.write('\n') 
+    sys.stdout.flush()
 
 
 def get_arguments():
@@ -86,6 +47,9 @@ def get_arguments():
                         required=True,
                         choices=['all', 'main', 'sub'],
                         help='Group used in training.')
+    parser.add_argument('--root', 
+                        required=True,
+                        help='Path to image files.')
     parser.add_argument('--trainset', 
                         required=True,
                         help='Path to CSV file containing annotations for training.')
@@ -97,15 +61,13 @@ def get_arguments():
                         required=True,
                         choices=['res50', 'res101', 'seres50', 'seres101'],
                         help='Backbone for retinanet.')
-    parser.add_argument('--lr', default=.0001, type=float, 
-                        help='Learning rate for training')
-    parser.add_argument('--optimizer', default='adam', type=str,
-                        help='Optimizer for training')
-    parser.add_argument('--epochs', default=50, type=int,
-                        help='Epochs for training')
+    parser.add_argument('--lr', default=.0001, type=float)
+    parser.add_argument('--optimizer', default='adam', type=str)
+    parser.add_argument('--epochs', default=50, type=int)
+    parser.add_argument('--batch-size', default=16, type=int)
+    parser.add_argument('--input-size', default=512, type=int)
 
-    parser.add_argument('--checkpoint', default=None, type=str,
-                        help='Enter the checkpoint path if resuming training.')
+    parser.add_argument('--checkpoint', default=None, type=str, help='Enter the checkpoint path if resuming training.')
 
     return parser.parse_args()
 
@@ -118,7 +80,7 @@ def main():
     ##############################################
     # Set Hyper Parameters
     ##############################################
-    CLASSES = {'all': 600,
+    CLASSES = {'all': 599,
                'main': 70,
                'sub': 400} # will change
 
@@ -133,25 +95,27 @@ def main():
     ])
 
     trainset = ListDataset(root=args.root,
+                           group=args.group,
                            list_file=args.trainset, 
                            train=True, 
                            transform=transform, 
-                           input_size=600)
+                           input_size=args.input_size)
 
     trainloader = torch.utils.data.DataLoader(trainset, 
-                                              batch_size=16, 
+                                              batch_size=args.batch_size, 
                                               shuffle=True, 
                                               num_workers=8, 
                                               collate_fn=trainset.collate_fn)
 
     valset = ListDataset(root=args.root,
+                         group=args.group,
                          list_file=args.valset, 
                          train=False, 
                          transform=transform, 
-                         input_size=600)
+                         input_size=args.input_size)
 
-    testloader = torch.utils.data.DataLoader(valset, 
-                                             batch_size=16, 
+    valloader = torch.utils.data.DataLoader(valset, 
+                                             batch_size=args.batch_size, 
                                              shuffle=False, 
                                              num_workers=8, 
                                              collate_fn=valset.collate_fn)
@@ -160,7 +124,7 @@ def main():
     net = RetinaNet(backbone=args.backbone,
                     classes=CLASSES[args.group])
 
-    net.load_state_dict(torch.load('./model/net.pth'))
+    # net.load_state_dict(torch.load('./model/net.pth'))
     if args.checkpoint:
         print('==> Resuming from checkpoint..')
         checkpoint = torch.load(args.checkpoint)
@@ -171,12 +135,61 @@ def main():
     net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
     net.cuda()
 
-    criterion = FocalLoss()
+    criterion = FocalLoss(classes=CLASSES[args.group])
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
 
     for epoch in range(start_epoch, args.epochs):
-        train(epoch)
-        test(epoch)
+        print('\nEpoch: %d' % epoch)
+        net.train()
+        net.module.freeze_bn()
+        train_loss = 0
+        for batch_idx, (inputs, loc_targets, cls_targets) in enumerate(trainloader):
+            inputs = Variable(inputs.cuda())
+            loc_targets = Variable(loc_targets.cuda())
+            cls_targets = Variable(cls_targets.cuda())
+
+            optimizer.zero_grad()
+            loc_preds, cls_preds = net(inputs)
+            loss = criterion(loc_preds, loc_targets, cls_preds, cls_targets)
+            loss[0].backward()
+            optimizer.step()
+
+            train_loss += loss[0].data
+            # printProgress(batch_idx, len(trainset)//args.batch_size, 'Progress:', 'loss: %.3f' % (train_loss/(batch_idx+1)), 1, 50)
+            print('{}/{} train_loss: {:.4f} | avg_loss: {:.4f} | loc_loss: {:.4f} | cls_loss: {:.4f}'.format(batch_idx, 
+                                                                                                             len(trainset)//args.batch_size,
+                                                                                                             loss[0].data, 
+                                                                                                             train_loss/(batch_idx+1), 
+                                                                                                             loss[1], 
+                                                                                                             loss[2]))
+            
+        print('\nValidation')
+        net.eval()
+        val_loss = 0
+        for batch_idx, (inputs, loc_targets, cls_targets) in enumerate(valloader):
+            inputs = Variable(inputs.cuda(), volatile=True)
+            loc_targets = Variable(loc_targets.cuda())
+            cls_targets = Variable(cls_targets.cuda())
+
+            loc_preds, cls_preds = net(inputs)
+            loss = criterion(loc_preds, loc_targets, cls_preds, cls_targets)
+            val_loss += loss.data
+            print('val_loss: %.3f | avg_loss: %.3f' % (loss.data, val_loss/(batch_idx+1)))
+
+        # Save checkpoint
+        # global best_loss
+        # val_loss /= len(valloader)
+        # if val_loss < best_loss:
+        #     print('Saving..')
+        #     state = {
+        #         'net': net.module.state_dict(),
+        #         'loss': val_loss,
+        #         'epoch': epoch,
+        #     }
+        #     if not os.path.isdir('checkpoint'):
+        #         os.mkdir('checkpoint')
+        #     torch.save(state, './checkpoint/ckpt.pth')
+        #     best_loss = val_loss
 
 if __name__ == "__main__":
     main()

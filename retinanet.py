@@ -29,8 +29,8 @@ class RetinaNet(nn.Module):
         for fm in fms:
             loc_pred = self.loc_head(fm)
             cls_pred = self.cls_head(fm)
-            loc_pred = loc_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,4)                 # [N, 9*4,H,W] -> [N,H,W, 9*4] -> [N,H*W*9, 4]
-            cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.classes)  # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
+            loc_pred = loc_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,4)                  # [N, 9*4,H,W] -> [N,H,W, 9*4] -> [N,H*W*9, 4]
+            cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.classes)       # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
             loc_preds.append(loc_pred)
             cls_preds.append(cls_pred)
         return torch.cat(loc_preds,1), torch.cat(cls_preds,1)
@@ -49,7 +49,7 @@ class RetinaNet(nn.Module):
             if isinstance(layer, nn.BatchNorm2d):
                 layer.eval()
 
-def test():
+if __name__ == "__main__":
     net = RetinaNet()
     loc_preds, cls_preds = net(Variable(torch.randn(2,3,224,224)))
     print(loc_preds.size())
@@ -59,4 +59,3 @@ def test():
     loc_preds.backward(loc_grads)
     cls_preds.backward(cls_grads)
 
-# test()
