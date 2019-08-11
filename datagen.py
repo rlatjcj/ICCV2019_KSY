@@ -30,7 +30,8 @@ class ListDataset(data.Dataset):
                  list_file, 
                  train, 
                  transform, 
-                 input_size):
+                 input_size,
+                 shuffle=True):
         '''
         Args:
             root: (str) ditectory to images.
@@ -44,6 +45,7 @@ class ListDataset(data.Dataset):
         self.train = train
         self.transform = transform
         self.input_size = input_size
+        self.shuffle = shuffle
 
         self.fnames = []
         self.boxes = []
@@ -51,8 +53,7 @@ class ListDataset(data.Dataset):
 
         self.encoder = DataEncoder()
 
-        self.classid = open("./data/classid_{}.json".format(group), "r").read()
-        self.classid = json.loads(self.classid)
+        self.classid = json.loads(open("./data/classid_{}.json".format(group), "r").read())
         self.df = pd.read_csv(list_file, header=None)
         self.fnames = np.unique(self.df[0].values).tolist()            
 
@@ -67,6 +68,9 @@ class ListDataset(data.Dataset):
           loc_targets: (tensor) location targets.
           cls_targets: (tensor) class label targets.
         '''
+        if self.shuffle and idx == 0:
+            random.shuffle(self.fnames)
+
         # Load image and boxes.
         fname = self.fnames[idx]
         try:
@@ -140,13 +144,14 @@ if __name__ == "__main__":
                           transform=transform, 
                           input_size=600)
 
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=False, num_workers=4, collate_fn=dataset.collate_fn)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4, collate_fn=dataset.collate_fn)
 
     for i, (images, loc_targets, cls_targets) in enumerate(dataloader):
-        # print(images.size())
-        # print(loc_targets.size())
-        # print(cls_targets.size())
+        print(images.size())
+        print(loc_targets.size())
+        print(cls_targets.size())
         # print('loc_targets :', loc_targets)
         print(i, 'cls_targets :', cls_targets.unique())
+        break
         # grid = torchvision.utils.make_grid(images, 1)
         # torchvision.utils.save_image(grid, './test.jpg')
